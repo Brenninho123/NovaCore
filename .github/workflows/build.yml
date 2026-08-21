@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows
+          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows sdl2-mixer:x64-windows
 
       - name: Configure CMake
         run: |
