@@ -25,6 +25,6 @@ target_link_libraries(NovaCore PRIVATE
     ${SDL2_IMAGE_LIBRARIES}
 )
 
-if(WIN32)
+if(MINGW)
     target_link_libraries(NovaCore PRIVATE mingw32 SDL2main)
 endif()
