@@ -7,33 +7,82 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
 jobs:
   build-windows:
     runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ Release, Debug ]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg
+          key: vcpkg-windows-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: |
+            vcpkg-windows-
+
       - name: Clone vcpkg
         run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          if (-not (Test-Path "C:\vcpkg\.git")) {
+            git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          }
           C:\vcpkg\bootstrap-vcpkg.bat
 
       - name: Install dependencies
         run: |
-          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows sdl2-mixer:x64-windows
+          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows sdl2-mixer:x64-windows opengl:x64-windows glad:x64-windows
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -A x64
+          cmake -B build -S . `
+            -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
+            -A x64
 
       - name: Build
         run: |
-          cmake --build build --config Release
+          cmake --build build --config ${{ matrix.config }} --parallel
+
+      - name: Run smoke test
+        if: matrix.config == 'Release'
+        run: |
+          Test-Path "build\Release\NovaCore.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NovaCore-Windows
-          path: build/Release/
+          name: NovaCore-Windows-${{ matrix.config }}
+          path: build/${{ matrix.config }}/
+          retention-days: 14
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.config }}
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
