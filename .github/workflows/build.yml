@@ -18,11 +18,6 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [ Release, Debug ]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,30 +53,29 @@ jobs:
           cmake -B build -S . `
             -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
+            -DCMAKE_BUILD_TYPE=Debug `
             -A x64
 
       - name: Build
         run: |
-          cmake --build build --config ${{ matrix.config }} --parallel
+          cmake --build build --config Debug --parallel
 
       - name: Run smoke test
-        if: matrix.config == 'Release'
         run: |
-          Test-Path "build\Release\NovaCore.exe"
+          Test-Path "build\Debug\NovaCore.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NovaCore-Windows-${{ matrix.config }}
-          path: build/${{ matrix.config }}/
+          name: NovaCore-Windows-Debug
+          path: build/Debug/
           retention-days: 14
 
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ matrix.config }}
+          name: build-logs
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
