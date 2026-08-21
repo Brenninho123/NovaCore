@@ -8,6 +8,5 @@ if(NOT DEFINED ENV{ANDROID_NDK_HOME})
     message(FATAL_ERROR "ANDROID_NDK_HOME environment variable must be set")
 endif()
 
-set(ANDROID_ABI arm64-v8a)
-set(ANDROID_PLATFORM android-24)
 set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "$ENV{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake")
+set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24)
