@@ -12,13 +12,21 @@ find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(SDL2_mixer REQUIRED)
 
-add_executable(NovaCore
+set(NOVACORE_SOURCES
     source/Main.cpp
     source/novacore/Assets.cpp
     source/novacore/backend/Controls.cpp
-    source/novacore/states/State.h
     source/novacore/states/MenuState.cpp
 )
+
+set(NOVACORE_HEADERS
+    source/novacore/Assets.h
+    source/novacore/backend/Controls.h
+    source/novacore/states/State.h
+    source/novacore/states/MenuState.h
+)
+
+add_executable(NovaCore ${NOVACORE_SOURCES} ${NOVACORE_HEADERS})
 
 target_include_directories(NovaCore PRIVATE
     source
@@ -39,4 +47,16 @@ if(MSVC)
     target_compile_options(NovaCore PRIVATE /W4)
 else()
     target_compile_options(NovaCore PRIVATE -Wall -Wextra)
+endif()
+
+if(MSVC)
+    set_target_properties(NovaCore PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NovaCore>"
+    )
+endif()
+
+install(TARGETS NovaCore RUNTIME DESTINATION .)
+
+if(WIN32)
+    install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
