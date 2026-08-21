@@ -11,6 +11,7 @@ add_executable(NovaCore
     source/Main.cpp
     source/novacore/Assets.cpp
     source/novacore/backend/Controls.cpp
+    source/novacore/states/MenuState.cpp
 )
 
 target_include_directories(NovaCore PRIVATE
