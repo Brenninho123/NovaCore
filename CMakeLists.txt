@@ -21,20 +21,18 @@ add_executable(NovaCore
 )
 
 target_include_directories(NovaCore PRIVATE
-    ${SDL2_INCLUDE_DIRS}
-    ${SDL2_IMAGE_INCLUDE_DIRS}
-    ${SDL2_MIXER_INCLUDE_DIRS}
     source
 )
 
 target_link_libraries(NovaCore PRIVATE
-    ${SDL2_LIBRARIES}
-    ${SDL2_IMAGE_LIBRARIES}
-    ${SDL2_MIXER_LIBRARIES}
+    $<IF:$<TARGET_EXISTS:SDL2::SDL2main>,SDL2::SDL2main,>
+    $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
+    $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
+    $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
 )
 
 if(MINGW)
-    target_link_libraries(NovaCore PRIVATE mingw32 SDL2main)
+    target_link_libraries(NovaCore PRIVATE mingw32)
 endif()
 
 if(MSVC)
