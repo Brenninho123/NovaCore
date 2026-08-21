@@ -1,9 +1,11 @@
 #include <SDL2/SDL.h>
+#include <glad/glad.h>
 #include <iostream>
 #include <memory>
 
 #include "novacore/Assets.h"
 #include "novacore/backend/Controls.h"
+#include "novacore/shaders/ShaderManager.h"
 #include "novacore/states/State.h"
 #include "novacore/states/MenuState.h"
 
@@ -15,19 +17,38 @@ public:
             return false;
         }
 
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
         window = SDL_CreateWindow(
             title,
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             width,
             height,
-            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL
         );
 
         if (!window) {
             std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
             return false;
         }
+
+        glContext = SDL_GL_CreateContext(window);
+        if (!glContext) {
+            std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << std::endl;
+            return false;
+        }
+
+        if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
+            std::cerr << "gladLoadGLLoader failed" << std::endl;
+            return false;
+        }
+
+        SDL_GL_SetSwapInterval(1);
 
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
@@ -38,8 +59,11 @@ public:
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
+        glViewport(0, 0, width, height);
+
         Assets::Init(renderer);
         Controls::Init();
+        ShaderManager::Init();
 
         auto menu = std::make_unique<MenuState>();
         menu->SetOnSelect([this](int index) {
@@ -77,8 +101,10 @@ public:
             currentState.reset();
         }
 
+        ShaderManager::Shutdown();
         Assets::Shutdown();
 
+        if (glContext) SDL_GL_DeleteContext(glContext);
         if (renderer) SDL_DestroyRenderer(renderer);
         if (window) SDL_DestroyWindow(window);
         SDL_Quit();
@@ -111,6 +137,10 @@ private:
                 running = false;
             }
 
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                glViewport(0, 0, event.window.data1, event.window.data2);
+            }
+
             Controls::HandleEvent(event);
         }
     }
@@ -136,6 +166,7 @@ private:
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
+    SDL_GLContext glContext = nullptr;
     bool running = false;
 
     std::unique_ptr<State> currentState;
