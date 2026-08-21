@@ -46,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123,libvorbis]:x64-windows" opengl:x64-windows glad:x64-windows
+          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123]:x64-windows" opengl:x64-windows glad:x64-windows
 
       - name: Configure CMake
         run: |
@@ -126,7 +126,7 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          "$HOME/vcpkg/vcpkg" install sdl2 sdl2-image "sdl2-mixer[core,mpg123,libvorbis]" \
+          "$HOME/vcpkg/vcpkg" install sdl2 sdl2-image "sdl2-mixer[core,mpg123]" \
             --triplet arm64-android \
             --overlay-triplets="${{ github.workspace }}/triplets"
 
