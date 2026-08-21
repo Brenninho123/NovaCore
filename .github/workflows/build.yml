@@ -145,6 +145,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cmake --build build --config Debug --parallel
 
