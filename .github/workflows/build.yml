@@ -46,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123]:x64-windows" opengl:x64-windows glad:x64-windows
+          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123]:x64-windows" opengl:x64-windows glad:x64-windows --recurse
 
       - name: Configure CMake
         run: |
@@ -128,7 +128,8 @@ jobs:
         run: |
           "$HOME/vcpkg/vcpkg" install sdl2 sdl2-image "sdl2-mixer[core,mpg123]" \
             --triplet arm64-android \
-            --overlay-triplets="${{ github.workspace }}/triplets"
+            --overlay-triplets="${{ github.workspace }}/triplets" \
+            --recurse
 
       - name: Configure CMake
         env:
