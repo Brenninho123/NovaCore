@@ -78,13 +78,50 @@ set(NOVACORE_ALL_HEADERS
     ${NOVACORE_SHADERS_HEADERS}
 )
 
-add_executable(NovaCore ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS})
+set(NOVACORE_ICON_PNG "${CMAKE_SOURCE_DIR}/arts/icon.png")
+set(NOVACORE_ICON_ICO "${CMAKE_BINARY_DIR}/generated/icon.ico")
+set(NOVACORE_RC_FILE "")
+
+if(WIN32 AND EXISTS "${NOVACORE_ICON_PNG}")
+    find_program(NOVACORE_MAGICK_EXE NAMES magick convert)
+
+    if(NOVACORE_MAGICK_EXE)
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+
+        add_custom_command(
+            OUTPUT "${NOVACORE_ICON_ICO}"
+            COMMAND ${NOVACORE_MAGICK_EXE} "${NOVACORE_ICON_PNG}" -define icon:auto-resize=256,128,64,48,32,16 "${NOVACORE_ICON_ICO}"
+            DEPENDS "${NOVACORE_ICON_PNG}"
+            COMMENT "Generating icon.ico from arts/icon.png"
+            VERBATIM
+        )
+
+        add_custom_target(NovaCoreIcon DEPENDS "${NOVACORE_ICON_ICO}")
+
+        set(NOVACORE_RC_IN "${CMAKE_BINARY_DIR}/generated/resource.rc.in")
+        file(WRITE "${NOVACORE_RC_IN}" "IDI_ICON1 ICON \"${NOVACORE_ICON_ICO}\"\n")
+
+        set(NOVACORE_RC_FILE "${CMAKE_BINARY_DIR}/generated/resource.rc")
+        configure_file("${NOVACORE_RC_IN}" "${NOVACORE_RC_FILE}" COPYONLY)
+    else()
+        message(WARNING "arts/icon.png found but ImageMagick (magick/convert) is not installed - skipping icon embedding")
+    endif()
+endif()
+
+add_executable(NovaCore ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS} ${NOVACORE_RC_FILE})
+
+if(TARGET NovaCoreIcon)
+    add_dependencies(NovaCore NovaCoreIcon)
+endif()
 
 source_group("Core" FILES ${NOVACORE_CORE_SOURCES} ${NOVACORE_CORE_HEADERS})
 source_group("Assets" FILES ${NOVACORE_ASSETS_SOURCES} ${NOVACORE_ASSETS_HEADERS})
 source_group("Backend" FILES ${NOVACORE_BACKEND_SOURCES} ${NOVACORE_BACKEND_HEADERS})
 source_group("States" FILES ${NOVACORE_STATES_SOURCES} ${NOVACORE_STATES_HEADERS})
 source_group("Shaders" FILES ${NOVACORE_SHADERS_SOURCES} ${NOVACORE_SHADERS_HEADERS})
+if(NOVACORE_RC_FILE)
+    source_group("Resources" FILES ${NOVACORE_RC_FILE})
+endif()
 
 target_include_directories(NovaCore PRIVATE
     source
