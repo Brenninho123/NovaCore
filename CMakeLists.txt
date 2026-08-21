@@ -19,8 +19,11 @@ option(NOVACORE_ENABLE_LTO "Enable link-time optimization on Release builds" ON)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(SDL2_mixer REQUIRED)
-find_package(OpenGL REQUIRED)
-find_package(glad CONFIG REQUIRED)
+
+if(NOT ANDROID)
+    find_package(OpenGL REQUIRED)
+    find_package(glad CONFIG REQUIRED)
+endif()
 
 set(NOVACORE_CORE_SOURCES
     source/Main.cpp
@@ -82,7 +85,7 @@ set(NOVACORE_ICON_PNG "${CMAKE_SOURCE_DIR}/arts/icon.png")
 set(NOVACORE_ICON_ICO "${CMAKE_BINARY_DIR}/generated/icon.ico")
 set(NOVACORE_RC_FILE "")
 
-if(WIN32 AND EXISTS "${NOVACORE_ICON_PNG}")
+if(WIN32 AND NOT ANDROID AND EXISTS "${NOVACORE_ICON_PNG}")
     find_program(NOVACORE_MAGICK_EXE NAMES magick convert)
 
     if(NOVACORE_MAGICK_EXE)
@@ -108,7 +111,11 @@ if(WIN32 AND EXISTS "${NOVACORE_ICON_PNG}")
     endif()
 endif()
 
-add_executable(NovaCore ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS} ${NOVACORE_RC_FILE})
+if(ANDROID)
+    add_library(NovaCore SHARED ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS})
+else()
+    add_executable(NovaCore ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS} ${NOVACORE_RC_FILE})
+endif()
 
 if(TARGET NovaCoreIcon)
     add_dependencies(NovaCore NovaCoreIcon)
@@ -127,14 +134,25 @@ target_include_directories(NovaCore PRIVATE
     source
 )
 
-target_link_libraries(NovaCore PRIVATE
-    $<IF:$<TARGET_EXISTS:SDL2::SDL2main>,SDL2::SDL2main,>
-    $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
-    $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
-    $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
-    glad::glad
-    OpenGL::GL
-)
+if(ANDROID)
+    target_link_libraries(NovaCore PRIVATE
+        SDL2::SDL2
+        SDL2_image::SDL2_image
+        SDL2_mixer::SDL2_mixer
+        GLESv2
+        log
+        android
+    )
+else()
+    target_link_libraries(NovaCore PRIVATE
+        $<IF:$<TARGET_EXISTS:SDL2::SDL2main>,SDL2::SDL2main,>
+        $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
+        $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
+        $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
+        glad::glad
+        OpenGL::GL
+    )
+endif()
 
 if(MINGW)
     target_link_libraries(NovaCore PRIVATE mingw32)
@@ -143,6 +161,7 @@ endif()
 target_compile_definitions(NovaCore PRIVATE
     $<$<CONFIG:Debug>:NOVACORE_DEBUG>
     $<$<CONFIG:Release>:NOVACORE_RELEASE>
+    $<$<BOOL:${ANDROID}>:NOVACORE_ANDROID>
 )
 
 if(MSVC)
@@ -157,11 +176,13 @@ else()
     endif()
 endif()
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT NOVACORE_IPO_SUPPORTED OUTPUT NOVACORE_IPO_ERROR)
+if(NOT ANDROID)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT NOVACORE_IPO_SUPPORTED OUTPUT NOVACORE_IPO_ERROR)
 
-if(NOVACORE_ENABLE_LTO AND NOVACORE_IPO_SUPPORTED AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    set_target_properties(NovaCore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    if(NOVACORE_ENABLE_LTO AND NOVACORE_IPO_SUPPORTED AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        set_target_properties(NovaCore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
 endif()
 
 if(MSVC)
@@ -170,24 +191,29 @@ if(MSVC)
     )
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    add_custom_command(TARGET NovaCore POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_SOURCE_DIR}/assets"
-            "$<TARGET_FILE_DIR:NovaCore>/assets"
-    )
+if(NOT ANDROID)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+        add_custom_command(TARGET NovaCore POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:NovaCore>/assets"
+        )
+    endif()
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/shaders")
+        add_custom_command(TARGET NovaCore POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/shaders"
+                "$<TARGET_FILE_DIR:NovaCore>/shaders"
+        )
+    endif()
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/shaders")
-    add_custom_command(TARGET NovaCore POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_SOURCE_DIR}/shaders"
-            "$<TARGET_FILE_DIR:NovaCore>/shaders"
-    )
-endif()
+install(TARGETS NovaCore
+    RUNTIME DESTINATION .
+    LIBRARY DESTINATION .
+)
 
-install(TARGETS NovaCore RUNTIME DESTINATION .)
-
-if(WIN32)
+if(WIN32 AND NOT ANDROID)
     install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
