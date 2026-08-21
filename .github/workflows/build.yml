@@ -75,7 +75,94 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-windows
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
+
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ~/vcpkg
+          key: vcpkg-android-${{ hashFiles('.github/workflows/build.yml', 'triplets/arm64-android.cmake') }}
+          restore-keys: |
+            vcpkg-android-
+
+      - name: Clone vcpkg
+        run: |
+          if [ ! -d "$HOME/vcpkg/.git" ]; then
+            git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          fi
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+
+      - name: Install dependencies
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          "$HOME/vcpkg/vcpkg" install sdl2 sdl2-image sdl2-mixer \
+            --triplet arm64-android \
+            --overlay-triplets="${{ github.workspace }}/triplets"
+
+      - name: Configure CMake
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_TOOLCHAIN_FILE="$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/triplets" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: |
+          cmake --build build --config Debug --parallel
+
+      - name: Run smoke test
+        run: |
+          test -f build/libNovaCore.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaCore-Android-arm64-Debug
+          path: build/libNovaCore.so
+          retention-days: 14
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-android
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
