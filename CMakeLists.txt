@@ -15,6 +15,12 @@ endif()
 
 option(NOVACORE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(NOVACORE_ENABLE_LTO "Enable link-time optimization on Release builds" ON)
+option(NOVACORE_ENABLE_SANITIZERS "Enable address/UB sanitizers on Debug builds (desktop only)" OFF)
+
+set(NOVACORE_IS_MOBILE OFF)
+if(ANDROID OR IOS OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(NOVACORE_IS_MOBILE ON)
+endif()
 
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
@@ -65,12 +71,21 @@ set(NOVACORE_SHADERS_HEADERS
     source/novacore/shaders/ShaderManager.h
 )
 
+set(NOVACORE_MOBILE_SOURCES
+    source/novacore/mobile/ScreenUtil.cpp
+)
+
+set(NOVACORE_MOBILE_HEADERS
+    source/novacore/mobile/ScreenUtil.h
+)
+
 set(NOVACORE_ALL_SOURCES
     ${NOVACORE_CORE_SOURCES}
     ${NOVACORE_ASSETS_SOURCES}
     ${NOVACORE_BACKEND_SOURCES}
     ${NOVACORE_STATES_SOURCES}
     ${NOVACORE_SHADERS_SOURCES}
+    ${NOVACORE_MOBILE_SOURCES}
 )
 
 set(NOVACORE_ALL_HEADERS
@@ -79,6 +94,7 @@ set(NOVACORE_ALL_HEADERS
     ${NOVACORE_BACKEND_HEADERS}
     ${NOVACORE_STATES_HEADERS}
     ${NOVACORE_SHADERS_HEADERS}
+    ${NOVACORE_MOBILE_HEADERS}
 )
 
 set(NOVACORE_ICON_PNG "${CMAKE_SOURCE_DIR}/arts/icon.png")
@@ -113,6 +129,12 @@ endif()
 
 if(ANDROID)
     add_library(NovaCore SHARED ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS})
+    set_target_properties(NovaCore PROPERTIES
+        LIBRARY_OUTPUT_NAME "main"
+        POSITION_INDEPENDENT_CODE ON
+    )
+elseif(NOVACORE_IS_MOBILE)
+    add_executable(NovaCore MACOSX_BUNDLE ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS})
 else()
     add_executable(NovaCore ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS} ${NOVACORE_RC_FILE})
 endif()
@@ -126,6 +148,7 @@ source_group("Assets" FILES ${NOVACORE_ASSETS_SOURCES} ${NOVACORE_ASSETS_HEADERS
 source_group("Backend" FILES ${NOVACORE_BACKEND_SOURCES} ${NOVACORE_BACKEND_HEADERS})
 source_group("States" FILES ${NOVACORE_STATES_SOURCES} ${NOVACORE_STATES_HEADERS})
 source_group("Shaders" FILES ${NOVACORE_SHADERS_SOURCES} ${NOVACORE_SHADERS_HEADERS})
+source_group("Mobile" FILES ${NOVACORE_MOBILE_SOURCES} ${NOVACORE_MOBILE_HEADERS})
 if(NOVACORE_RC_FILE)
     source_group("Resources" FILES ${NOVACORE_RC_FILE})
 endif()
@@ -162,6 +185,7 @@ target_compile_definitions(NovaCore PRIVATE
     $<$<CONFIG:Debug>:NOVACORE_DEBUG>
     $<$<CONFIG:Release>:NOVACORE_RELEASE>
     $<$<BOOL:${ANDROID}>:NOVACORE_ANDROID>
+    $<$<BOOL:${NOVACORE_IS_MOBILE}>:NOVACORE_MOBILE>
 )
 
 if(MSVC)
@@ -173,6 +197,20 @@ else()
     target_compile_options(NovaCore PRIVATE -Wall -Wextra -Wpedantic)
     if(NOVACORE_WARNINGS_AS_ERRORS)
         target_compile_options(NovaCore PRIVATE -Werror)
+    endif()
+endif()
+
+if(NOVACORE_ENABLE_SANITIZERS AND NOT ANDROID AND NOT NOVACORE_IS_MOBILE AND NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(NovaCore PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(NovaCore PRIVATE -fsanitize=address,undefined)
+endif()
+
+if(ANDROID)
+    target_compile_options(NovaCore PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(NovaCore PRIVATE -Wl,--gc-sections)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_link_options(NovaCore PRIVATE -s)
     endif()
 endif()
 
@@ -191,7 +229,7 @@ if(MSVC)
     )
 endif()
 
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
     if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
         add_custom_command(TARGET NovaCore POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -209,6 +247,10 @@ if(NOT ANDROID)
     endif()
 endif()
 
+if(ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
+endif()
+
 install(TARGETS NovaCore
     RUNTIME DESTINATION .
     LIBRARY DESTINATION .
@@ -217,3 +259,5 @@ install(TARGETS NovaCore
 if(WIN32 AND NOT ANDROID)
     install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
+
+message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID})")
