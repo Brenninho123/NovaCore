@@ -17,6 +17,12 @@ option(NOVACORE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(NOVACORE_ENABLE_LTO "Enable link-time optimization on Release builds" ON)
 option(NOVACORE_ENABLE_SANITIZERS "Enable address/UB sanitizers on Debug builds (desktop only)" OFF)
 option(NOVACORE_ENABLE_DISCORD "Enable Discord OAuth login module (desktop only)" ON)
+option(NOVACORE_ENABLE_TTF "Enable SDL2_ttf text rendering support" ON)
+option(NOVACORE_ENABLE_CCACHE "Use ccache/sccache if available to speed up rebuilds" ON)
+option(NOVACORE_ENABLE_PCH "Enable precompiled headers to speed up compilation" ON)
+option(NOVACORE_ENABLE_UNITY_BUILD "Enable CMake unity build for faster full rebuilds" OFF)
+option(NOVACORE_ENABLE_PACKAGING "Enable CPack packaging targets" ON)
+option(NOVACORE_ENABLE_DOCS "Enable Doxygen documentation target if Doxygen is found" OFF)
 
 set(NOVACORE_IS_MOBILE OFF)
 if(ANDROID OR IOS OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -27,9 +33,52 @@ if(NOVACORE_IS_MOBILE)
     set(NOVACORE_ENABLE_DISCORD OFF)
 endif()
 
+if(NOVACORE_ENABLE_CCACHE)
+    find_program(NOVACORE_CCACHE_EXE NAMES sccache ccache)
+    if(NOVACORE_CCACHE_EXE)
+        set(CMAKE_C_COMPILER_LAUNCHER "${NOVACORE_CCACHE_EXE}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${NOVACORE_CCACHE_EXE}")
+        message(STATUS "NovaCore: using compiler launcher ${NOVACORE_CCACHE_EXE}")
+    endif()
+endif()
+
+set(CMAKE_UNITY_BUILD ${NOVACORE_ENABLE_UNITY_BUILD})
+
+find_package(Git QUIET)
+set(NOVACORE_GIT_HASH "unknown")
+set(NOVACORE_GIT_BRANCH "unknown")
+
+if(Git_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE NOVACORE_GIT_HASH_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOVACORE_GIT_HASH_RESULT)
+        set(NOVACORE_GIT_HASH "${NOVACORE_GIT_HASH_RESULT}")
+    endif()
+
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE NOVACORE_GIT_BRANCH_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOVACORE_GIT_BRANCH_RESULT)
+        set(NOVACORE_GIT_BRANCH "${NOVACORE_GIT_BRANCH_RESULT}")
+    endif()
+endif()
+
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(SDL2_mixer REQUIRED)
+
+if(NOVACORE_ENABLE_TTF)
+    find_package(SDL2_ttf REQUIRED)
+endif()
 
 if(NOT ANDROID)
     find_package(OpenGL REQUIRED)
@@ -131,6 +180,26 @@ if(NOVACORE_ENABLE_DISCORD)
     list(APPEND NOVACORE_ALL_HEADERS ${NOVACORE_DISCORD_HEADERS})
 endif()
 
+set(NOVACORE_VERSION_HEADER_IN "${CMAKE_SOURCE_DIR}/source/novacore/Version.h.in")
+set(NOVACORE_VERSION_HEADER_OUT "${CMAKE_BINARY_DIR}/generated/novacore/Version.h")
+
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated/novacore")
+
+if(NOT EXISTS "${NOVACORE_VERSION_HEADER_IN}")
+    file(WRITE "${NOVACORE_VERSION_HEADER_IN}"
+"#pragma once\n\n"
+"#define NOVACORE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR}\n"
+"#define NOVACORE_VERSION_MINOR ${PROJECT_VERSION_MINOR}\n"
+"#define NOVACORE_VERSION_PATCH ${PROJECT_VERSION_PATCH}\n"
+"#define NOVACORE_VERSION_STRING \"@PROJECT_VERSION@\"\n"
+"#define NOVACORE_GIT_HASH \"@NOVACORE_GIT_HASH@\"\n"
+"#define NOVACORE_GIT_BRANCH \"@NOVACORE_GIT_BRANCH@\"\n"
+"#define NOVACORE_BUILD_TYPE \"@CMAKE_BUILD_TYPE@\"\n"
+)
+endif()
+
+configure_file("${NOVACORE_VERSION_HEADER_IN}" "${NOVACORE_VERSION_HEADER_OUT}" @ONLY)
+
 set(NOVACORE_ICON_PNG "${CMAKE_SOURCE_DIR}/arts/icon.png")
 set(NOVACORE_ICON_ICO "${CMAKE_BINARY_DIR}/generated/icon.ico")
 set(NOVACORE_RC_FILE "")
@@ -193,7 +262,19 @@ endif()
 
 target_include_directories(NovaCore PRIVATE
     source
+    "${CMAKE_BINARY_DIR}/generated"
 )
+
+if(NOVACORE_ENABLE_PCH)
+    target_precompile_headers(NovaCore PRIVATE
+        <string>
+        <vector>
+        <memory>
+        <functional>
+        <unordered_map>
+        <SDL2/SDL.h>
+    )
+endif()
 
 if(ANDROID)
     target_link_libraries(NovaCore PRIVATE
@@ -213,6 +294,13 @@ else()
         glad::glad
         OpenGL::GL
     )
+endif()
+
+if(NOVACORE_ENABLE_TTF)
+    target_link_libraries(NovaCore PRIVATE
+        $<IF:$<TARGET_EXISTS:SDL2_ttf::SDL2_ttf>,SDL2_ttf::SDL2_ttf,SDL2_ttf::SDL2_ttf-static>
+    )
+    target_compile_definitions(NovaCore PRIVATE NOVACORE_TTF_ENABLED)
 endif()
 
 if(NOVACORE_ENABLE_DISCORD)
@@ -245,7 +333,7 @@ target_compile_definitions(NovaCore PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(NovaCore PRIVATE /W4 /permissive-)
+    target_compile_options(NovaCore PRIVATE /W4 /permissive- /MP)
     if(NOVACORE_WARNINGS_AS_ERRORS)
         target_compile_options(NovaCore PRIVATE /WX)
     endif()
@@ -316,4 +404,49 @@ if(WIN32 AND NOT ANDROID)
     install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
 
-message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD})")
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets" DESTINATION .)
+endif()
+
+find_program(NOVACORE_CLANG_FORMAT_EXE NAMES clang-format)
+if(NOVACORE_CLANG_FORMAT_EXE)
+    add_custom_target(NovaCoreFormat
+        COMMAND ${NOVACORE_CLANG_FORMAT_EXE} -i ${NOVACORE_ALL_SOURCES} ${NOVACORE_ALL_HEADERS}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Formatting NovaCore sources with clang-format"
+        VERBATIM
+    )
+endif()
+
+if(NOVACORE_ENABLE_DOCS)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        set(DOXYGEN_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/docs")
+        set(DOXYGEN_GENERATE_HTML YES)
+        set(DOXYGEN_RECURSIVE YES)
+        doxygen_add_docs(NovaCoreDocs
+            "${CMAKE_SOURCE_DIR}/source"
+            COMMENT "Generating NovaCore documentation"
+        )
+    else()
+        message(STATUS "NovaCore: Doxygen not found, skipping NovaCoreDocs target")
+    endif()
+endif()
+
+if(NOVACORE_ENABLE_PACKAGING AND NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
+    set(CPACK_PACKAGE_NAME "NovaCore")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_VENDOR "Brenninho")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "NovaCore game engine")
+
+    if(WIN32)
+        set(CPACK_GENERATOR "ZIP")
+    else()
+        set(CPACK_GENERATOR "TGZ")
+    endif()
+
+    include(CPack)
+endif()
+
+message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD}, ttf=${NOVACORE_ENABLE_TTF})")
+message(STATUS "NovaCore version: ${PROJECT_VERSION} (${NOVACORE_GIT_BRANCH}@${NOVACORE_GIT_HASH})")
