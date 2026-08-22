@@ -184,24 +184,43 @@ jobs:
           mkdir -p android-project/app/src/main/jniLibs/arm64-v8a
           cp build/libmain.so android-project/app/src/main/jniLibs/arm64-v8a/libmain.so
 
+      - name: Cache ImageMagick package
+        id: cache-imagemagick
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives/*imagemagick*.deb
+          key: apt-imagemagick-${{ runner.os }}
+
+      - name: Install ImageMagick
+        run: |
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends imagemagick
+          fi
+
       - name: Generate Android launcher icons
         run: |
-          if [ -f "arts/icon.png" ]; then
-            command -v magick >/dev/null 2>&1 && MAGICK=magick || MAGICK=convert
-
-            declare -A DENSITIES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
-
-            for density in "${!DENSITIES[@]}"; do
-              size="${DENSITIES[$density]}"
-              outdir="android-project/app/src/main/res/mipmap-${density}"
-              mkdir -p "$outdir"
-              "$MAGICK" arts/icon.png -resize "${size}x${size}" -define png:color-type=6 "$outdir/ic_launcher.png"
-              cp "$outdir/ic_launcher.png" "$outdir/ic_launcher_round.png"
-              file "$outdir/ic_launcher.png"
-            done
-          else
+          if [ ! -f "arts/icon.png" ]; then
             echo "arts/icon.png not found, skipping icon generation"
+            exit 0
           fi
+
+          command -v magick >/dev/null 2>&1 && MAGICK=magick || MAGICK=convert
+
+          identify "arts/icon.png" || { echo "arts/icon.png is not a valid image"; exit 1; }
+
+          declare -A DENSITIES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
+
+          for density in "${!DENSITIES[@]}"; do
+            size="${DENSITIES[$density]}"
+            outdir="android-project/app/src/main/res/mipmap-${density}"
+            mkdir -p "$outdir"
+
+            "$MAGICK" "arts/icon.png" -resize "${size}x${size}" -define png:color-type=6 -strip "$outdir/ic_launcher.png"
+            cp "$outdir/ic_launcher.png" "$outdir/ic_launcher_round.png"
+
+            identify "$outdir/ic_launcher.png"
+          done
 
       - name: Verify Android project layout
         run: |
