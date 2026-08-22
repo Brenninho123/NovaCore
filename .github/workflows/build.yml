@@ -46,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123]:x64-windows" opengl:x64-windows glad:x64-windows --recurse
+          C:\vcpkg\vcpkg.exe install sdl2:x64-windows sdl2-image:x64-windows "sdl2-mixer[core,mpg123]:x64-windows" opengl:x64-windows glad:x64-windows curl:x64-windows openssl:x64-windows nlohmann-json:x64-windows --recurse
 
       - name: Configure CMake
         run: |
@@ -146,21 +146,47 @@ jobs:
             -DCMAKE_WARN_UNUSED_CLI=OFF \
             -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Build
+      - name: Build native library
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cmake --build build --config Debug --parallel
 
-      - name: Run smoke test
+      - name: Run native smoke test
         run: |
           test -f build/libmain.so
 
-      - name: Upload artifact
+      - name: Fetch SDL2 Java sources
+        run: |
+          curl -L https://github.com/libsdl-org/SDL/archive/refs/tags/release-2.32.10.tar.gz -o sdl2-src.tar.gz
+          mkdir sdl2-src
+          tar -xzf sdl2-src.tar.gz -C sdl2-src --strip-components=1
+          mkdir -p android-project/app/src/main/java
+          cp -r sdl2-src/android-project/app/src/main/java/org android-project/app/src/main/java/
+
+      - name: Place native library into Android project
+        run: |
+          mkdir -p android-project/app/src/main/jniLibs/arm64-v8a
+          cp build/libmain.so android-project/app/src/main/jniLibs/arm64-v8a/libmain.so
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build APK
+        run: |
+          gradle -p android-project assembleDebug --no-daemon
+
+      - name: Run APK smoke test
+        run: |
+          test -f android-project/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NovaCore-Android-arm64-Debug
-          path: build/libmain.so
+          name: NovaCore-Android-APK-Debug
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
       - name: Upload build logs on failure
