@@ -154,13 +154,13 @@ jobs:
 
       - name: Run smoke test
         run: |
-          test -f build/libNovaCore.so
+          test -f build/libmain.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: NovaCore-Android-arm64-Debug
-          path: build/libNovaCore.so
+          path: build/libmain.so
           retention-days: 14
 
       - name: Upload build logs on failure
