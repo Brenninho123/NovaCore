@@ -141,11 +141,18 @@ set(NOVACORE_MOBILE_HEADERS
 
 set(NOVACORE_UI_SOURCES
     source/novacore/ui/Guard.cpp
+    source/novacore/ui/editor/EditorMenu.cpp
 )
 
 set(NOVACORE_UI_HEADERS
     source/novacore/ui/Guard.h
+    source/novacore/ui/editor/EditorMenu.h
 )
+
+if(NOVACORE_ENABLE_TTF)
+    list(APPEND NOVACORE_UI_SOURCES source/novacore/ui/TextRenderer.cpp)
+    list(APPEND NOVACORE_UI_HEADERS source/novacore/ui/TextRenderer.h)
+endif()
 
 set(NOVACORE_DISCORD_SOURCES
     source/novacore/api/discord/DiscordLogin.cpp
@@ -389,10 +396,22 @@ if(NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
                 "$<TARGET_FILE_DIR:NovaCore>/shaders"
         )
     endif()
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/arts")
+        add_custom_command(TARGET NovaCore POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/arts"
+                "$<TARGET_FILE_DIR:NovaCore>/arts"
+        )
+    endif()
 endif()
 
 if(ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/assets")
     file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
+endif()
+
+if(ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/arts")
+    file(COPY "${CMAKE_SOURCE_DIR}/arts" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
 endif()
 
 install(TARGETS NovaCore
@@ -406,6 +425,10 @@ endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
     install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets" DESTINATION .)
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/arts")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/arts" DESTINATION .)
 endif()
 
 find_program(NOVACORE_CLANG_FORMAT_EXE NAMES clang-format)
