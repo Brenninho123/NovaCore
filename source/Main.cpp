@@ -1,5 +1,11 @@
 #include <SDL2/SDL.h>
+
+#if defined(NOVACORE_ANDROID)
+#include <GLES2/gl2.h>
+#else
 #include <glad/glad.h>
+#endif
+
 #include <iostream>
 #include <memory>
 
@@ -17,11 +23,23 @@ public:
             return false;
         }
 
+#if defined(NOVACORE_ANDROID)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+#if defined(NOVACORE_ANDROID)
+        Uint32 windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN;
+#else
+        Uint32 windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL;
+#endif
 
         window = SDL_CreateWindow(
             title,
@@ -29,7 +47,7 @@ public:
             SDL_WINDOWPOS_CENTERED,
             width,
             height,
-            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL
+            windowFlags
         );
 
         if (!window) {
@@ -43,10 +61,12 @@ public:
             return false;
         }
 
+#if !defined(NOVACORE_ANDROID)
         if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
             std::cerr << "gladLoadGLLoader failed" << std::endl;
             return false;
         }
+#endif
 
         SDL_GL_SetSwapInterval(1);
 
@@ -59,7 +79,10 @@ public:
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        glViewport(0, 0, width, height);
+        int drawableWidth = width;
+        int drawableHeight = height;
+        SDL_GL_GetDrawableSize(window, &drawableWidth, &drawableHeight);
+        glViewport(0, 0, drawableWidth, drawableHeight);
 
         Assets::Init(renderer);
         Controls::Init();
@@ -138,7 +161,14 @@ private:
             }
 
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                glViewport(0, 0, event.window.data1, event.window.data2);
+                int drawableWidth = event.window.data1;
+                int drawableHeight = event.window.data2;
+                SDL_GL_GetDrawableSize(window, &drawableWidth, &drawableHeight);
+                glViewport(0, 0, drawableWidth, drawableHeight);
+            }
+
+            if (currentState) {
+                currentState->HandleEvent(event);
             }
 
             Controls::HandleEvent(event);
