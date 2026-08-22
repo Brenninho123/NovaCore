@@ -29,6 +29,8 @@ option(NOVACORE_ENABLE_PCH "Enable precompiled headers to speed up compilation" 
 option(NOVACORE_ENABLE_UNITY_BUILD "Enable CMake unity build for faster full rebuilds" OFF)
 option(NOVACORE_ENABLE_PACKAGING "Enable CPack packaging targets" ON)
 option(NOVACORE_ENABLE_DOCS "Enable Doxygen documentation target if Doxygen is found" OFF)
+option(NOVACORE_ENABLE_TESTS "Enable NovaCoreTests target (if tests/ directory exists)" OFF)
+option(NOVACORE_VERBOSE_CONFIG "Print a detailed configuration summary at configure time" ON)
 
 set(NOVACORE_IS_MOBILE OFF)
 if(ANDROID OR IOS OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -53,6 +55,7 @@ set(CMAKE_UNITY_BUILD ${NOVACORE_ENABLE_UNITY_BUILD})
 find_package(Git QUIET)
 set(NOVACORE_GIT_HASH "unknown")
 set(NOVACORE_GIT_BRANCH "unknown")
+set(NOVACORE_GIT_DIRTY "")
 
 if(Git_FOUND)
     execute_process(
@@ -75,6 +78,17 @@ if(Git_FOUND)
     )
     if(NOVACORE_GIT_BRANCH_RESULT)
         set(NOVACORE_GIT_BRANCH "${NOVACORE_GIT_BRANCH_RESULT}")
+    endif()
+
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} status --porcelain
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE NOVACORE_GIT_DIRTY_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOVACORE_GIT_DIRTY_RESULT)
+        set(NOVACORE_GIT_DIRTY "-dirty")
     endif()
 endif()
 
@@ -233,7 +247,7 @@ if(NOT EXISTS "${NOVACORE_VERSION_HEADER_IN}")
 "#define NOVACORE_VERSION_MINOR ${PROJECT_VERSION_MINOR}\n"
 "#define NOVACORE_VERSION_PATCH ${PROJECT_VERSION_PATCH}\n"
 "#define NOVACORE_VERSION_STRING \"@PROJECT_VERSION@\"\n"
-"#define NOVACORE_GIT_HASH \"@NOVACORE_GIT_HASH@\"\n"
+"#define NOVACORE_GIT_HASH \"@NOVACORE_GIT_HASH@@NOVACORE_GIT_DIRTY@\"\n"
 "#define NOVACORE_GIT_BRANCH \"@NOVACORE_GIT_BRANCH@\"\n"
 "#define NOVACORE_BUILD_TYPE \"@CMAKE_BUILD_TYPE@\"\n"
 )
@@ -312,13 +326,25 @@ target_include_directories(NovaCore PRIVATE
 
 if(NOVACORE_ENABLE_PCH)
     target_precompile_headers(NovaCore PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:<string>>
-        $<$<COMPILE_LANGUAGE:CXX>:<vector>>
-        $<$<COMPILE_LANGUAGE:CXX>:<memory>>
-        $<$<COMPILE_LANGUAGE:CXX>:<functional>>
-        $<$<COMPILE_LANGUAGE:CXX>:<unordered_map>>
-        $<$<COMPILE_LANGUAGE:CXX>:<SDL2/SDL.h>>
+        <string>
+        <vector>
+        <memory>
+        <functional>
+        <unordered_map>
+        <SDL2/SDL.h>
     )
+
+    set(NOVACORE_C_SOURCES_NO_PCH "")
+    if(NOVACORE_ENABLE_GAMEPAD)
+        list(APPEND NOVACORE_C_SOURCES_NO_PCH source/novacore/backend/ControlsManager.c)
+    endif()
+    if(NOVACORE_ENABLE_NCSCRIPT)
+        list(APPEND NOVACORE_C_SOURCES_NO_PCH source/nc/NCScript.c)
+    endif()
+
+    if(NOVACORE_C_SOURCES_NO_PCH)
+        set_source_files_properties(${NOVACORE_C_SOURCES_NO_PCH} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    endif()
 endif()
 
 if(ANDROID)
@@ -443,37 +469,15 @@ if(MSVC)
 endif()
 
 if(NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-        add_custom_command(TARGET NovaCore POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/assets"
-                "$<TARGET_FILE_DIR:NovaCore>/assets"
-        )
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/shaders")
-        add_custom_command(TARGET NovaCore POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/shaders"
-                "$<TARGET_FILE_DIR:NovaCore>/shaders"
-        )
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/arts")
-        add_custom_command(TARGET NovaCore POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/arts"
-                "$<TARGET_FILE_DIR:NovaCore>/arts"
-        )
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/scripts")
-        add_custom_command(TARGET NovaCore POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/scripts"
-                "$<TARGET_FILE_DIR:NovaCore>/scripts"
-        )
-    endif()
+    foreach(NOVACORE_RUNTIME_DIR assets shaders arts scripts)
+        if(EXISTS "${CMAKE_SOURCE_DIR}/${NOVACORE_RUNTIME_DIR}")
+            add_custom_command(TARGET NovaCore POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${CMAKE_SOURCE_DIR}/${NOVACORE_RUNTIME_DIR}"
+                    "$<TARGET_FILE_DIR:NovaCore>/${NOVACORE_RUNTIME_DIR}"
+            )
+        endif()
+    endforeach()
 endif()
 
 if(ANDROID)
@@ -524,6 +528,11 @@ if(NOVACORE_ENABLE_DOCS)
     endif()
 endif()
 
+if(NOVACORE_ENABLE_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/tests")
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 if(NOVACORE_ENABLE_PACKAGING AND NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
     set(CPACK_PACKAGE_NAME "NovaCore")
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
@@ -539,5 +548,29 @@ if(NOVACORE_ENABLE_PACKAGING AND NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
     include(CPack)
 endif()
 
-message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD}, ttf=${NOVACORE_ENABLE_TTF}, gamepad=${NOVACORE_ENABLE_GAMEPAD}, ncscript=${NOVACORE_ENABLE_NCSCRIPT})")
-message(STATUS "NovaCore version: ${PROJECT_VERSION} (${NOVACORE_GIT_BRANCH}@${NOVACORE_GIT_HASH})")
+if(NOVACORE_VERBOSE_CONFIG)
+    message(STATUS "")
+    message(STATUS "==================== NovaCore configuration ====================")
+    message(STATUS "  Version           : ${PROJECT_VERSION} (${NOVACORE_GIT_BRANCH}@${NOVACORE_GIT_HASH}${NOVACORE_GIT_DIRTY})")
+    message(STATUS "  System            : ${CMAKE_SYSTEM_NAME}")
+    message(STATUS "  Build type        : ${CMAKE_BUILD_TYPE}")
+    message(STATUS "  Mobile target     : ${NOVACORE_IS_MOBILE}")
+    message(STATUS "  Android target    : ${ANDROID}")
+    message(STATUS "  ------------------------------------------------------------")
+    message(STATUS "  TTF text          : ${NOVACORE_ENABLE_TTF}")
+    message(STATUS "  Gamepad backend   : ${NOVACORE_ENABLE_GAMEPAD}")
+    message(STATUS "  NCScript          : ${NOVACORE_ENABLE_NCSCRIPT}")
+    message(STATUS "  Discord OAuth     : ${NOVACORE_ENABLE_DISCORD}")
+    message(STATUS "  ------------------------------------------------------------")
+    message(STATUS "  LTO (Release)     : ${NOVACORE_ENABLE_LTO}")
+    message(STATUS "  Sanitizers        : ${NOVACORE_ENABLE_SANITIZERS}")
+    message(STATUS "  Precompiled hdrs  : ${NOVACORE_ENABLE_PCH}")
+    message(STATUS "  Unity build       : ${NOVACORE_ENABLE_UNITY_BUILD}")
+    message(STATUS "  Compiler launcher : ${NOVACORE_CCACHE_EXE}")
+    message(STATUS "  ------------------------------------------------------------")
+    message(STATUS "  Packaging (CPack) : ${NOVACORE_ENABLE_PACKAGING}")
+    message(STATUS "  Docs (Doxygen)    : ${NOVACORE_ENABLE_DOCS}")
+    message(STATUS "  Tests             : ${NOVACORE_ENABLE_TESTS}")
+    message(STATUS "==================================================================")
+    message(STATUS "")
+endif()
