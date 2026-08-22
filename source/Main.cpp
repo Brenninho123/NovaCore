@@ -15,8 +15,10 @@
 #include "novacore/backend/Controls.h"
 #include "novacore/shaders/ShaderManager.h"
 #include "novacore/mobile/ScreenUtil.h"
+#include "novacore/ui/TextRenderer.h"
 #include "novacore/states/State.h"
 #include "novacore/states/MenuState.h"
+#include "novacore/ui/editor/EditorMenu.h"
 
 #if defined(NOVACORE_DISCORD_ENABLED)
 #include "novacore/api/discord/DiscordLogin.h"
@@ -195,6 +197,18 @@ public:
         Controls::Init();
         ShaderManager::Init();
 
+        if (!TextRenderer::Init()) {
+            SDL_Log("TextRenderer::Init failed");
+        }
+
+        if (!TextRenderer::LoadFont("default", "arts/fonts/default.ttf", 18)) {
+            SDL_Log("Failed to load default font, text will not render");
+        }
+
+        if (!TextRenderer::LoadFont("small", "arts/fonts/default.ttf", 13)) {
+            SDL_Log("Failed to load small font, text will not render");
+        }
+
 #if defined(NOVACORE_DISCORD_ENABLED)
         DiscordLogin::Init("1540653184530251847");
 #endif
@@ -221,6 +235,7 @@ public:
     void Run() {
         Uint32 lastTime = SDL_GetTicks();
         float accumulator = 0.0f;
+        float cacheTrimTimer = 0.0f;
 
         while (running) {
             Uint32 currentTime = SDL_GetTicks();
@@ -245,6 +260,12 @@ public:
                 }
             }
 
+            cacheTrimTimer += frameTime;
+            if (cacheTrimTimer >= 2.0f) {
+                TextRenderer::TrimTextureCache(256);
+                cacheTrimTimer = 0.0f;
+            }
+
             Render();
 
             if (stateManager.IsEmpty()) {
@@ -260,6 +281,7 @@ public:
         DiscordLogin::Shutdown();
 #endif
 
+        TextRenderer::Shutdown();
         ShaderManager::Shutdown();
         Assets::Shutdown();
 
@@ -270,10 +292,25 @@ public:
     }
 
 private:
+    void OpenEditorWorkspace(const std::string& name) {
+        auto editor = std::make_unique<EditorMenu>();
+        editor->SetProjectName(name);
+
+        editor->SetOnExit([this]() {
+            stateManager.Pop();
+        });
+
+        editor->SetOnSave([]() {
+            SDL_Log("Project saved");
+        });
+
+        stateManager.Push(std::move(editor));
+    }
+
     void OnEditorAction(EditorAction action) {
         switch (action) {
             case EditorAction::NewProject:
-                SDL_Log("New Project selected");
+                OpenEditorWorkspace("Untitled Project");
                 break;
             case EditorAction::OpenProject:
 #if defined(NOVACORE_DISCORD_ENABLED)
@@ -292,6 +329,7 @@ private:
 
     void OnOpenRecentProject(int index) {
         SDL_Log("Opening recent project index %d", index);
+        OpenEditorWorkspace("Recent Project " + std::to_string(index));
     }
 
     void RefreshViewport() {
