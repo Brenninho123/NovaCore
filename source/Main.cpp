@@ -203,9 +203,15 @@ public:
 
         auto* menu = dynamic_cast<MenuState*>(stateManager.Top());
         if (menu) {
-            menu->SetOnSelect([this](int index) {
-                OnMenuSelect(index);
+            menu->SetOnAction([this](EditorAction action) {
+                OnEditorAction(action);
             });
+
+            menu->SetOnOpenRecentProject([this](int index) {
+                OnOpenRecentProject(index);
+            });
+
+            menu->SetRecentProjects({});
         }
 
         running = true;
@@ -264,26 +270,28 @@ public:
     }
 
 private:
-    void OnMenuSelect(int index) {
-        switch (index) {
-            case 0:
-                SDL_Log("Play selected");
+    void OnEditorAction(EditorAction action) {
+        switch (action) {
+            case EditorAction::NewProject:
+                SDL_Log("New Project selected");
                 break;
-            case 1:
+            case EditorAction::OpenProject:
 #if defined(NOVACORE_DISCORD_ENABLED)
                 DiscordLogin::StartLogin({ "identify" });
 #endif
-                SDL_Log("Options selected");
+                SDL_Log("Open Project selected");
                 break;
-            case 2:
-                SDL_Log("Credits selected");
+            case EditorAction::Settings:
+                SDL_Log("Settings selected");
                 break;
-            case 3:
+            case EditorAction::Exit:
                 running = false;
                 break;
-            default:
-                break;
         }
+    }
+
+    void OnOpenRecentProject(int index) {
+        SDL_Log("Opening recent project index %d", index);
     }
 
     void RefreshViewport() {
@@ -320,6 +328,7 @@ private:
                     break;
             }
 
+            ScreenUtil::HandleEvent(event);
             stateManager.HandleEvent(event);
             Controls::HandleEvent(event);
         }
