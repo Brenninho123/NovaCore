@@ -1,6 +1,11 @@
 #pragma once
 
+#if defined(NOVACORE_ANDROID)
+#include <GLES2/gl2.h>
+#else
 #include <glad/glad.h>
+#endif
+
 #include <string>
 #include <unordered_map>
 
