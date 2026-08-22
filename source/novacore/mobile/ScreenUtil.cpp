@@ -20,7 +20,6 @@ void ScreenUtil::Init(SDL_Window* w) {
 
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
-    SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "1");
 
     SDL_DisableScreenSaver();
 
