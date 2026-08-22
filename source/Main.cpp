@@ -201,11 +201,11 @@ public:
             SDL_Log("TextRenderer::Init failed");
         }
 
-        if (!TextRenderer::LoadFont("default", "arts/fonts/default.ttf", 18)) {
+        if (!TextRenderer::LoadFont("default", "assets/fonts/default.ttf", 18)) {
             SDL_Log("Failed to load default font, text will not render");
         }
 
-        if (!TextRenderer::LoadFont("small", "arts/fonts/default.ttf", 13)) {
+        if (!TextRenderer::LoadFont("small", "assets/fonts/default.ttf", 13)) {
             SDL_Log("Failed to load small font, text will not render");
         }
 
