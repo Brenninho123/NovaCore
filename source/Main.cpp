@@ -10,12 +10,15 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <cstring>
 
 #include "novacore/Assets.h"
 #include "novacore/backend/Controls.h"
+#include "novacore/backend/ControlsManager.h"
 #include "novacore/shaders/ShaderManager.h"
 #include "novacore/mobile/ScreenUtil.h"
 #include "novacore/ui/TextRenderer.h"
+#include "novacore/api/API.h"
 #include "novacore/states/State.h"
 #include "novacore/states/MenuState.h"
 #include "novacore/ui/editor/EditorMenu.h"
@@ -24,6 +27,8 @@
 #include "novacore/api/discord/DiscordLogin.h"
 #endif
 
+#include "../source/nc/NCScript.h"
+
 struct EngineConfig {
     std::string title = "NovaCore";
     int width = 1280;
@@ -31,6 +36,71 @@ struct EngineConfig {
     float fixedTimestep = 1.0f / 60.0f;
     int maxUpdatesPerFrame = 5;
 };
+
+static NCValue NCNative_Log(NCValue* args, int argCount) {
+    if (argCount > 0 && args[0].type == NC_VALUE_STRING) {
+        NovaAPI_LogInfo(args[0].string);
+    }
+    NCValue result;
+    result.type = NC_VALUE_NULL;
+    result.number = 0;
+    result.boolean = 0;
+    result.string = nullptr;
+    return result;
+}
+
+static NCValue NCNative_KeyDown(NCValue* args, int argCount) {
+    NCValue result;
+    result.type = NC_VALUE_BOOL;
+    result.number = 0;
+    result.string = nullptr;
+    result.boolean = 0;
+
+    if (argCount > 0 && args[0].type == NC_VALUE_NUMBER) {
+        result.boolean = NovaAPI_KeyDown(static_cast<int>(args[0].number));
+    }
+
+    return result;
+}
+
+static NCValue NCNative_DrawText(NCValue* args, int argCount) {
+    if (argCount >= 4 && args[0].type == NC_VALUE_STRING && args[1].type == NC_VALUE_STRING) {
+        int x = args[2].type == NC_VALUE_NUMBER ? static_cast<int>(args[2].number) : 0;
+        int y = args[3].type == NC_VALUE_NUMBER ? static_cast<int>(args[3].number) : 0;
+        NovaAPI_DrawText(args[0].string, args[1].string, x, y, 255, 255, 255, 255, 0);
+    }
+
+    NCValue result;
+    result.type = NC_VALUE_NULL;
+    result.number = 0;
+    result.boolean = 0;
+    result.string = nullptr;
+    return result;
+}
+
+static NCValue NCNative_ScreenWidth(NCValue* args, int argCount) {
+    (void)args;
+    (void)argCount;
+
+    NCValue result;
+    result.type = NC_VALUE_NUMBER;
+    result.number = NovaAPI_GetScreenWidth();
+    result.boolean = 0;
+    result.string = nullptr;
+    return result;
+}
+
+static NCValue NCNative_ScreenHeight(NCValue* args, int argCount) {
+    (void)args;
+    (void)argCount;
+
+    NCValue result;
+    result.type = NC_VALUE_NUMBER;
+    result.number = NovaAPI_GetScreenHeight();
+    result.boolean = 0;
+    result.string = nullptr;
+    return result;
+}
 
 class StateManager {
 public:
@@ -121,7 +191,7 @@ public:
     bool Init(const EngineConfig& cfg) {
         config = cfg;
 
-        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
             SDL_Log("SDL_Init failed: %s", SDL_GetError());
             return false;
         }
@@ -195,6 +265,7 @@ public:
 
         Assets::Init(renderer);
         Controls::Init();
+        ControlsManager_Init();
         ShaderManager::Init();
 
         if (!TextRenderer::Init()) {
@@ -208,6 +279,15 @@ public:
         if (!TextRenderer::LoadFont("small", "assets/fonts/default.ttf", 13)) {
             SDL_Log("Failed to load small font, text will not render");
         }
+
+        NovaAPI_Init(renderer);
+
+        NCScript_Init();
+        NCScript_RegisterNative("log", NCNative_Log);
+        NCScript_RegisterNative("keyDown", NCNative_KeyDown);
+        NCScript_RegisterNative("drawText", NCNative_DrawText);
+        NCScript_RegisterNative("screenWidth", NCNative_ScreenWidth);
+        NCScript_RegisterNative("screenHeight", NCNative_ScreenHeight);
 
 #if defined(NOVACORE_DISCORD_ENABLED)
         DiscordLogin::Init("1540653184530251847");
@@ -255,6 +335,7 @@ public:
                 while (accumulator >= config.fixedTimestep && updates < config.maxUpdatesPerFrame) {
                     stateManager.Update(config.fixedTimestep);
                     Controls::Update();
+                    ControlsManager_Update();
                     accumulator -= config.fixedTimestep;
                     updates++;
                 }
@@ -277,12 +358,16 @@ public:
     void Shutdown() {
         stateManager.Clear();
 
+        NCScript_Shutdown();
+        NovaAPI_Shutdown();
+
 #if defined(NOVACORE_DISCORD_ENABLED)
         DiscordLogin::Shutdown();
 #endif
 
         TextRenderer::Shutdown();
         ShaderManager::Shutdown();
+        ControlsManager_Shutdown();
         Assets::Shutdown();
 
         if (glContext) SDL_GL_DeleteContext(glContext);
@@ -367,6 +452,7 @@ private:
             }
 
             ScreenUtil::HandleEvent(event);
+            ControlsManager_HandleEvent(&event);
             stateManager.HandleEvent(event);
             Controls::HandleEvent(event);
         }
