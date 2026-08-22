@@ -16,10 +16,15 @@ endif()
 option(NOVACORE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(NOVACORE_ENABLE_LTO "Enable link-time optimization on Release builds" ON)
 option(NOVACORE_ENABLE_SANITIZERS "Enable address/UB sanitizers on Debug builds (desktop only)" OFF)
+option(NOVACORE_ENABLE_DISCORD "Enable Discord OAuth login module (desktop only)" ON)
 
 set(NOVACORE_IS_MOBILE OFF)
 if(ANDROID OR IOS OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(NOVACORE_IS_MOBILE ON)
+endif()
+
+if(NOVACORE_IS_MOBILE)
+    set(NOVACORE_ENABLE_DISCORD OFF)
 endif()
 
 find_package(SDL2 REQUIRED)
@@ -29,6 +34,12 @@ find_package(SDL2_mixer REQUIRED)
 if(NOT ANDROID)
     find_package(OpenGL REQUIRED)
     find_package(glad CONFIG REQUIRED)
+endif()
+
+if(NOVACORE_ENABLE_DISCORD)
+    find_package(CURL REQUIRED)
+    find_package(OpenSSL REQUIRED)
+    find_package(nlohmann_json CONFIG REQUIRED)
 endif()
 
 set(NOVACORE_CORE_SOURCES
@@ -79,6 +90,22 @@ set(NOVACORE_MOBILE_HEADERS
     source/novacore/mobile/ScreenUtil.h
 )
 
+set(NOVACORE_UI_SOURCES
+    source/novacore/ui/Guard.cpp
+)
+
+set(NOVACORE_UI_HEADERS
+    source/novacore/ui/Guard.h
+)
+
+set(NOVACORE_DISCORD_SOURCES
+    source/novacore/api/discord/DiscordLogin.cpp
+)
+
+set(NOVACORE_DISCORD_HEADERS
+    source/novacore/api/discord/DiscordLogin.h
+)
+
 set(NOVACORE_ALL_SOURCES
     ${NOVACORE_CORE_SOURCES}
     ${NOVACORE_ASSETS_SOURCES}
@@ -86,6 +113,7 @@ set(NOVACORE_ALL_SOURCES
     ${NOVACORE_STATES_SOURCES}
     ${NOVACORE_SHADERS_SOURCES}
     ${NOVACORE_MOBILE_SOURCES}
+    ${NOVACORE_UI_SOURCES}
 )
 
 set(NOVACORE_ALL_HEADERS
@@ -95,7 +123,13 @@ set(NOVACORE_ALL_HEADERS
     ${NOVACORE_STATES_HEADERS}
     ${NOVACORE_SHADERS_HEADERS}
     ${NOVACORE_MOBILE_HEADERS}
+    ${NOVACORE_UI_HEADERS}
 )
+
+if(NOVACORE_ENABLE_DISCORD)
+    list(APPEND NOVACORE_ALL_SOURCES ${NOVACORE_DISCORD_SOURCES})
+    list(APPEND NOVACORE_ALL_HEADERS ${NOVACORE_DISCORD_HEADERS})
+endif()
 
 set(NOVACORE_ICON_PNG "${CMAKE_SOURCE_DIR}/arts/icon.png")
 set(NOVACORE_ICON_ICO "${CMAKE_BINARY_DIR}/generated/icon.ico")
@@ -149,6 +183,10 @@ source_group("Backend" FILES ${NOVACORE_BACKEND_SOURCES} ${NOVACORE_BACKEND_HEAD
 source_group("States" FILES ${NOVACORE_STATES_SOURCES} ${NOVACORE_STATES_HEADERS})
 source_group("Shaders" FILES ${NOVACORE_SHADERS_SOURCES} ${NOVACORE_SHADERS_HEADERS})
 source_group("Mobile" FILES ${NOVACORE_MOBILE_SOURCES} ${NOVACORE_MOBILE_HEADERS})
+source_group("UI" FILES ${NOVACORE_UI_SOURCES} ${NOVACORE_UI_HEADERS})
+if(NOVACORE_ENABLE_DISCORD)
+    source_group("API\\Discord" FILES ${NOVACORE_DISCORD_SOURCES} ${NOVACORE_DISCORD_HEADERS})
+endif()
 if(NOVACORE_RC_FILE)
     source_group("Resources" FILES ${NOVACORE_RC_FILE})
 endif()
@@ -175,6 +213,24 @@ else()
         glad::glad
         OpenGL::GL
     )
+endif()
+
+if(NOVACORE_ENABLE_DISCORD)
+    target_link_libraries(NovaCore PRIVATE
+        CURL::libcurl
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        nlohmann_json::nlohmann_json
+    )
+
+    target_compile_definitions(NovaCore PRIVATE NOVACORE_DISCORD_ENABLED)
+
+    if(WIN32)
+        target_link_libraries(NovaCore PRIVATE ws2_32)
+    else()
+        find_package(Threads REQUIRED)
+        target_link_libraries(NovaCore PRIVATE Threads::Threads)
+    endif()
 endif()
 
 if(MINGW)
@@ -260,4 +316,4 @@ if(WIN32 AND NOT ANDROID)
     install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
 
-message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID})")
+message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD})")
