@@ -2,6 +2,7 @@
 #include "../backend/Controls.h"
 #include "../mobile/ScreenUtil.h"
 #include "../ui/Guard.h"
+#include "../ui/TextRenderer.h"
 #include <algorithm>
 #include <cmath>
 
@@ -346,6 +347,8 @@ void MenuState::Update(float deltaTime) {
         fpsAccumulator = 0.0f;
         fpsFrameCount = 0;
     }
+
+    Guard::Update(deltaTime);
 }
 
 static void DrawPanelFrame(SDL_Renderer* renderer, const SDL_Rect& rect, Uint8 r, Uint8 g, Uint8 b) {
@@ -364,6 +367,9 @@ void MenuState::Render(SDL_Renderer* renderer) {
         RebuildLayout();
     }
 
+    SDL_Color white = { 255, 255, 255, 255 };
+    SDL_Color dim = { 200, 200, 210, 255 };
+
     for (size_t i = 0; i < toolbarButtons.size(); i++) {
         const SDL_Rect& rect = toolbarButtons[i].rect;
         bool pressed = static_cast<int>(i) == pressedToolbarIndex;
@@ -377,11 +383,21 @@ void MenuState::Render(SDL_Renderer* renderer) {
 
         SDL_SetRenderDrawColor(renderer, 100, 100, 130, 255);
         SDL_RenderDrawRect(renderer, &rect);
+
+        int textWidth = 0, textHeight = 0;
+        TextRenderer::MeasureText("default", toolbarButtons[i].label, textWidth, textHeight);
+        TextRenderer::DrawText(renderer, "default", toolbarButtons[i].label,
+            rect.x + rect.w / 2, rect.y + rect.h / 2 - textHeight / 2, white, TextAlign::Center);
     }
 
     DrawPanelFrame(renderer, recentPanelRect, 26, 26, 36);
 
+    int headerHeight = 22;
+    TextRenderer::DrawText(renderer, "small", "RECENT PROJECTS", recentPanelRect.x + 8, recentPanelRect.y + 4, dim, TextAlign::Left);
+
     SDL_Rect clipRect = recentPanelRect;
+    clipRect.y += headerHeight;
+    clipRect.h -= headerHeight;
     SDL_RenderSetClipRect(renderer, &clipRect);
 
     for (size_t i = 0; i < recentButtons.size(); i++) {
@@ -390,39 +406,46 @@ void MenuState::Render(SDL_Renderer* renderer) {
 
         SDL_SetRenderDrawColor(renderer, pressed ? 70 : 38, pressed ? 70 : 38, pressed ? 90 : 52, 255);
         SDL_RenderFillRect(renderer, &rect);
+
+        int textHeight = 0, textWidth = 0;
+        TextRenderer::MeasureText("small", recentButtons[i].label, textWidth, textHeight);
+        TextRenderer::DrawText(renderer, "small", recentButtons[i].label,
+            rect.x + 10, rect.y + rect.h / 2 - textHeight / 2, white, TextAlign::Left);
+    }
+
+    if (recentButtons.empty()) {
+        TextRenderer::DrawText(renderer, "small", "No recent projects", recentPanelRect.x + 8, recentPanelRect.y + headerHeight + 8, dim, TextAlign::Left);
     }
 
     SDL_RenderSetClipRect(renderer, nullptr);
 
     if (viewportPanelRect.w > 0) {
         DrawPanelFrame(renderer, viewportPanelRect, 8, 8, 12);
+        TextRenderer::DrawText(renderer, "small", "VIEWPORT", viewportPanelRect.x + 8, viewportPanelRect.y + 4, dim, TextAlign::Left);
     }
 
     DrawPanelFrame(renderer, consolePanelRect, 10, 10, 14);
+    TextRenderer::DrawText(renderer, "small", "CONSOLE", consolePanelRect.x + 8, consolePanelRect.y + 4, dim, TextAlign::Left);
 
     SDL_Rect consoleClip = consolePanelRect;
+    consoleClip.y += headerHeight;
+    consoleClip.h -= headerHeight;
     SDL_RenderSetClipRect(renderer, &consoleClip);
 
     int lineHeight = 16;
-    int visibleLines = consolePanelRect.h / lineHeight;
+    int visibleLines = consoleClip.h / lineHeight;
     int startIndex = std::max(0, static_cast<int>(logBuffer.size()) - visibleLines);
 
     for (size_t i = startIndex; i < logBuffer.size(); i++) {
         const LogEntry& entry = logBuffer[i];
-        int lineY = consolePanelRect.y + static_cast<int>(i - startIndex) * lineHeight;
+        int lineY = consoleClip.y + static_cast<int>(i - startIndex) * lineHeight;
 
-        Uint8 r = 150, g = 150, b = 150;
-        if (entry.priority == SDL_LOG_PRIORITY_WARN) { r = 220; g = 190; b = 60; }
-        else if (entry.priority >= SDL_LOG_PRIORITY_ERROR) { r = 220; g = 70; b = 70; }
-        else if (entry.priority == SDL_LOG_PRIORITY_INFO) { r = 90; g = 160; b = 220; }
+        SDL_Color color = { 150, 150, 150, 255 };
+        if (entry.priority == SDL_LOG_PRIORITY_WARN) { color = { 220, 190, 60, 255 }; }
+        else if (entry.priority >= SDL_LOG_PRIORITY_ERROR) { color = { 220, 70, 70, 255 }; }
+        else if (entry.priority == SDL_LOG_PRIORITY_INFO) { color = { 90, 160, 220, 255 }; }
 
-        SDL_Rect marker = { consolePanelRect.x + 6, lineY + 4, 6, 6 };
-        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
-        SDL_RenderFillRect(renderer, &marker);
-
-        SDL_Rect textBar = { consolePanelRect.x + 18, lineY + 3, std::min(static_cast<int>(entry.message.size()) * 4, consolePanelRect.w - 24), 8 };
-        SDL_SetRenderDrawColor(renderer, r, g, b, 140);
-        SDL_RenderFillRect(renderer, &textBar);
+        TextRenderer::DrawText(renderer, "small", entry.message, consolePanelRect.x + 8, lineY, color, TextAlign::Left);
     }
 
     SDL_RenderSetClipRect(renderer, nullptr);
@@ -434,13 +457,14 @@ void MenuState::Render(SDL_Renderer* renderer) {
     if (currentFps < 45.0f) { fpsR = 220; fpsG = 190; fpsB = 60; }
     if (currentFps < 25.0f) { fpsR = 220; fpsG = 70; fpsB = 70; }
 
-    SDL_Rect fpsIndicator = { statusBarRect.x + 8, statusBarRect.y + statusBarRect.h / 2 - 4, 8, 8 };
-    SDL_SetRenderDrawColor(renderer, fpsR, fpsG, fpsB, 255);
-    SDL_RenderFillRect(renderer, &fpsIndicator);
+    char fpsText[32];
+    SDL_snprintf(fpsText, sizeof(fpsText), "%.0f FPS", currentFps);
 
-    SDL_Rect platformIndicator = { statusBarRect.x + 24, statusBarRect.y + statusBarRect.h / 2 - 4, 8, 8 };
-    SDL_SetRenderDrawColor(renderer, ScreenUtil::IsMobile() ? 90 : 160, ScreenUtil::IsMobile() ? 200 : 160, 220, 255);
-    SDL_RenderFillRect(renderer, &platformIndicator);
+    SDL_Color fpsColor = { fpsR, fpsG, fpsB, 255 };
+    TextRenderer::DrawText(renderer, "small", fpsText, statusBarRect.x + 8, statusBarRect.y + statusBarRect.h / 2 - 7, fpsColor, TextAlign::Left);
+
+    SDL_Color platformColor = { static_cast<Uint8>(ScreenUtil::IsMobile() ? 90 : 160), static_cast<Uint8>(ScreenUtil::IsMobile() ? 200 : 160), 220, 255 };
+    TextRenderer::DrawText(renderer, "small", ScreenUtil::IsMobile() ? "Mobile" : "Desktop", statusBarRect.x + 90, statusBarRect.y + statusBarRect.h / 2 - 7, platformColor, TextAlign::Left);
 
     Guard::Render(renderer);
 }
