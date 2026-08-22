@@ -1,0 +1,33 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "com.brenninho.novacore"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.brenninho.novacore"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+    }
+}
