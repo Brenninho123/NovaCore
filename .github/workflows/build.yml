@@ -184,6 +184,25 @@ jobs:
           mkdir -p android-project/app/src/main/jniLibs/arm64-v8a
           cp build/libmain.so android-project/app/src/main/jniLibs/arm64-v8a/libmain.so
 
+      - name: Generate Android launcher icons
+        run: |
+          if [ -f "arts/icon.png" ]; then
+            command -v magick >/dev/null 2>&1 && MAGICK=magick || MAGICK=convert
+
+            declare -A DENSITIES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
+
+            for density in "${!DENSITIES[@]}"; do
+              size="${DENSITIES[$density]}"
+              outdir="android-project/app/src/main/res/mipmap-${density}"
+              mkdir -p "$outdir"
+              "$MAGICK" arts/icon.png -resize "${size}x${size}" -define png:color-type=6 "$outdir/ic_launcher.png"
+              cp "$outdir/ic_launcher.png" "$outdir/ic_launcher_round.png"
+              file "$outdir/ic_launcher.png"
+            done
+          else
+            echo "arts/icon.png not found, skipping icon generation"
+          fi
+
       - name: Verify Android project layout
         run: |
           test -f android-project/app/build.gradle
