@@ -18,6 +18,10 @@
 #include "novacore/states/State.h"
 #include "novacore/states/MenuState.h"
 
+#if defined(NOVACORE_DISCORD_ENABLED)
+#include "novacore/api/discord/DiscordLogin.h"
+#endif
+
 struct EngineConfig {
     std::string title = "NovaCore";
     int width = 1280;
@@ -96,6 +100,10 @@ public:
         for (size_t i = startIndex; i < stack.size(); i++) {
             stack[i]->Render(renderer);
         }
+    }
+
+    State* Top() {
+        return stack.empty() ? nullptr : stack.back().get();
     }
 
     bool IsEmpty() const {
@@ -187,8 +195,13 @@ public:
         Controls::Init();
         ShaderManager::Init();
 
+#if defined(NOVACORE_DISCORD_ENABLED)
+        DiscordLogin::Init("1540653184530251847");
+#endif
+
         stateManager.Push(std::make_unique<MenuState>());
-        auto* menu = static_cast<MenuState*>(GetTopStateUnsafe());
+
+        auto* menu = dynamic_cast<MenuState*>(stateManager.Top());
         if (menu) {
             menu->SetOnSelect([this](int index) {
                 OnMenuSelect(index);
@@ -237,6 +250,10 @@ public:
     void Shutdown() {
         stateManager.Clear();
 
+#if defined(NOVACORE_DISCORD_ENABLED)
+        DiscordLogin::Shutdown();
+#endif
+
         ShaderManager::Shutdown();
         Assets::Shutdown();
 
@@ -247,16 +264,15 @@ public:
     }
 
 private:
-    State* GetTopStateUnsafe() {
-        return topStateRaw;
-    }
-
     void OnMenuSelect(int index) {
         switch (index) {
             case 0:
                 SDL_Log("Play selected");
                 break;
             case 1:
+#if defined(NOVACORE_DISCORD_ENABLED)
+                DiscordLogin::StartLogin({ "identify" });
+#endif
                 SDL_Log("Options selected");
                 break;
             case 2:
@@ -328,7 +344,6 @@ private:
     bool paused = false;
 
     StateManager stateManager;
-    State* topStateRaw = nullptr;
 };
 
 int main(int argc, char* argv[]) {
