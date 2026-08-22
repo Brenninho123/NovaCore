@@ -1,6 +1,8 @@
 #include "TextRenderer.h"
 #include <iostream>
 #include <sstream>
+#include <algorithm>
+#include <vector>
 
 std::unordered_map<std::string, TTF_Font*> TextRenderer::fonts;
 std::unordered_map<std::string, TextRenderer::CachedTexture> TextRenderer::textureCache;
