@@ -2,12 +2,16 @@ cmake_minimum_required(VERSION 3.16)
 
 project(NovaCore
     VERSION 0.1.0
-    LANGUAGES CXX
+    LANGUAGES CXX C
 )
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -18,6 +22,8 @@ option(NOVACORE_ENABLE_LTO "Enable link-time optimization on Release builds" ON)
 option(NOVACORE_ENABLE_SANITIZERS "Enable address/UB sanitizers on Debug builds (desktop only)" OFF)
 option(NOVACORE_ENABLE_DISCORD "Enable Discord OAuth login module (desktop only)" ON)
 option(NOVACORE_ENABLE_TTF "Enable SDL2_ttf text rendering support" ON)
+option(NOVACORE_ENABLE_GAMEPAD "Enable SDL2 GameController backend (ControlsManager.c)" ON)
+option(NOVACORE_ENABLE_NCSCRIPT "Enable the NCScript scripting language" ON)
 option(NOVACORE_ENABLE_CCACHE "Use ccache/sccache if available to speed up rebuilds" ON)
 option(NOVACORE_ENABLE_PCH "Enable precompiled headers to speed up compilation" ON)
 option(NOVACORE_ENABLE_UNITY_BUILD "Enable CMake unity build for faster full rebuilds" OFF)
@@ -114,6 +120,11 @@ set(NOVACORE_BACKEND_HEADERS
     source/novacore/backend/Controls.h
 )
 
+if(NOVACORE_ENABLE_GAMEPAD)
+    list(APPEND NOVACORE_BACKEND_SOURCES source/novacore/backend/ControlsManager.c)
+    list(APPEND NOVACORE_BACKEND_HEADERS source/novacore/backend/ControlsManager.h)
+endif()
+
 set(NOVACORE_STATES_SOURCES
     source/novacore/states/MenuState.cpp
 )
@@ -154,12 +165,28 @@ if(NOVACORE_ENABLE_TTF)
     list(APPEND NOVACORE_UI_HEADERS source/novacore/ui/TextRenderer.h)
 endif()
 
+set(NOVACORE_API_SOURCES
+    source/novacore/api/API.cpp
+)
+
+set(NOVACORE_API_HEADERS
+    source/novacore/api/API.h
+)
+
 set(NOVACORE_DISCORD_SOURCES
     source/novacore/api/discord/DiscordLogin.cpp
 )
 
 set(NOVACORE_DISCORD_HEADERS
     source/novacore/api/discord/DiscordLogin.h
+)
+
+set(NOVACORE_NC_SOURCES
+    source/nc/NCScript.c
+)
+
+set(NOVACORE_NC_HEADERS
+    source/nc/NCScript.h
 )
 
 set(NOVACORE_ALL_SOURCES
@@ -170,6 +197,7 @@ set(NOVACORE_ALL_SOURCES
     ${NOVACORE_SHADERS_SOURCES}
     ${NOVACORE_MOBILE_SOURCES}
     ${NOVACORE_UI_SOURCES}
+    ${NOVACORE_API_SOURCES}
 )
 
 set(NOVACORE_ALL_HEADERS
@@ -180,11 +208,17 @@ set(NOVACORE_ALL_HEADERS
     ${NOVACORE_SHADERS_HEADERS}
     ${NOVACORE_MOBILE_HEADERS}
     ${NOVACORE_UI_HEADERS}
+    ${NOVACORE_API_HEADERS}
 )
 
 if(NOVACORE_ENABLE_DISCORD)
     list(APPEND NOVACORE_ALL_SOURCES ${NOVACORE_DISCORD_SOURCES})
     list(APPEND NOVACORE_ALL_HEADERS ${NOVACORE_DISCORD_HEADERS})
+endif()
+
+if(NOVACORE_ENABLE_NCSCRIPT)
+    list(APPEND NOVACORE_ALL_SOURCES ${NOVACORE_NC_SOURCES})
+    list(APPEND NOVACORE_ALL_HEADERS ${NOVACORE_NC_HEADERS})
 endif()
 
 set(NOVACORE_VERSION_HEADER_IN "${CMAKE_SOURCE_DIR}/source/novacore/Version.h.in")
@@ -260,8 +294,12 @@ source_group("States" FILES ${NOVACORE_STATES_SOURCES} ${NOVACORE_STATES_HEADERS
 source_group("Shaders" FILES ${NOVACORE_SHADERS_SOURCES} ${NOVACORE_SHADERS_HEADERS})
 source_group("Mobile" FILES ${NOVACORE_MOBILE_SOURCES} ${NOVACORE_MOBILE_HEADERS})
 source_group("UI" FILES ${NOVACORE_UI_SOURCES} ${NOVACORE_UI_HEADERS})
+source_group("API" FILES ${NOVACORE_API_SOURCES} ${NOVACORE_API_HEADERS})
 if(NOVACORE_ENABLE_DISCORD)
     source_group("API\\Discord" FILES ${NOVACORE_DISCORD_SOURCES} ${NOVACORE_DISCORD_HEADERS})
+endif()
+if(NOVACORE_ENABLE_NCSCRIPT)
+    source_group("NCScript" FILES ${NOVACORE_NC_SOURCES} ${NOVACORE_NC_HEADERS})
 endif()
 if(NOVACORE_RC_FILE)
     source_group("Resources" FILES ${NOVACORE_RC_FILE})
@@ -274,12 +312,12 @@ target_include_directories(NovaCore PRIVATE
 
 if(NOVACORE_ENABLE_PCH)
     target_precompile_headers(NovaCore PRIVATE
-        <string>
-        <vector>
-        <memory>
-        <functional>
-        <unordered_map>
-        <SDL2/SDL.h>
+        $<$<COMPILE_LANGUAGE:CXX>:<string>>
+        $<$<COMPILE_LANGUAGE:CXX>:<vector>>
+        $<$<COMPILE_LANGUAGE:CXX>:<memory>>
+        $<$<COMPILE_LANGUAGE:CXX>:<functional>>
+        $<$<COMPILE_LANGUAGE:CXX>:<unordered_map>>
+        $<$<COMPILE_LANGUAGE:CXX>:<SDL2/SDL.h>>
     )
 endif()
 
@@ -308,6 +346,18 @@ if(NOVACORE_ENABLE_TTF)
         $<IF:$<TARGET_EXISTS:SDL2_ttf::SDL2_ttf>,SDL2_ttf::SDL2_ttf,SDL2_ttf::SDL2_ttf-static>
     )
     target_compile_definitions(NovaCore PRIVATE NOVACORE_TTF_ENABLED)
+endif()
+
+if(NOVACORE_ENABLE_GAMEPAD)
+    target_compile_definitions(NovaCore PRIVATE NOVACORE_GAMEPAD_ENABLED)
+endif()
+
+if(NOVACORE_ENABLE_NCSCRIPT)
+    target_compile_definitions(NovaCore PRIVATE NOVACORE_NCSCRIPT_ENABLED)
+    find_library(NOVACORE_MATH_LIB m)
+    if(NOVACORE_MATH_LIB)
+        target_link_libraries(NovaCore PRIVATE ${NOVACORE_MATH_LIB})
+    endif()
 endif()
 
 if(NOVACORE_ENABLE_DISCORD)
@@ -340,12 +390,24 @@ target_compile_definitions(NovaCore PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(NovaCore PRIVATE /W4 /permissive- /MP)
+    target_compile_options(NovaCore PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/W4>
+        $<$<COMPILE_LANGUAGE:CXX>:/permissive->
+        $<$<COMPILE_LANGUAGE:CXX>:/MP>
+        $<$<COMPILE_LANGUAGE:C>:/W3>
+        $<$<COMPILE_LANGUAGE:C>:/MP>
+    )
     if(NOVACORE_WARNINGS_AS_ERRORS)
         target_compile_options(NovaCore PRIVATE /WX)
     endif()
 else()
-    target_compile_options(NovaCore PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(NovaCore PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+        $<$<COMPILE_LANGUAGE:C>:-Wall>
+        $<$<COMPILE_LANGUAGE:C>:-Wextra>
+    )
     if(NOVACORE_WARNINGS_AS_ERRORS)
         target_compile_options(NovaCore PRIVATE -Werror)
     endif()
@@ -367,7 +429,7 @@ endif()
 
 if(NOT ANDROID)
     include(CheckIPOSupported)
-    check_ipo_supported(RESULT NOVACORE_IPO_SUPPORTED OUTPUT NOVACORE_IPO_ERROR)
+    check_ipo_supported(RESULT NOVACORE_IPO_SUPPORTED OUTPUT NOVACORE_IPO_ERROR LANGUAGES CXX)
 
     if(NOVACORE_ENABLE_LTO AND NOVACORE_IPO_SUPPORTED AND CMAKE_BUILD_TYPE STREQUAL "Release")
         set_target_properties(NovaCore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -404,14 +466,22 @@ if(NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
                 "$<TARGET_FILE_DIR:NovaCore>/arts"
         )
     endif()
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/scripts")
+        add_custom_command(TARGET NovaCore POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/scripts"
+                "$<TARGET_FILE_DIR:NovaCore>/scripts"
+        )
+    endif()
 endif()
 
-if(ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
-endif()
-
-if(ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/arts")
-    file(COPY "${CMAKE_SOURCE_DIR}/arts" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
+if(ANDROID)
+    foreach(NOVACORE_ANDROID_ASSET_DIR assets arts scripts)
+        if(EXISTS "${CMAKE_SOURCE_DIR}/${NOVACORE_ANDROID_ASSET_DIR}")
+            file(COPY "${CMAKE_SOURCE_DIR}/${NOVACORE_ANDROID_ASSET_DIR}" DESTINATION "${CMAKE_SOURCE_DIR}/android-project/app/src/main/assets/novacore")
+        endif()
+    endforeach()
 endif()
 
 install(TARGETS NovaCore
@@ -423,13 +493,11 @@ if(WIN32 AND NOT ANDROID)
     install(FILES $<TARGET_RUNTIME_DLLS:NovaCore> DESTINATION . OPTIONAL)
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets" DESTINATION .)
-endif()
-
-if(EXISTS "${CMAKE_SOURCE_DIR}/arts")
-    install(DIRECTORY "${CMAKE_SOURCE_DIR}/arts" DESTINATION .)
-endif()
+foreach(NOVACORE_INSTALL_DIR assets arts scripts)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/${NOVACORE_INSTALL_DIR}")
+        install(DIRECTORY "${CMAKE_SOURCE_DIR}/${NOVACORE_INSTALL_DIR}" DESTINATION .)
+    endif()
+endforeach()
 
 find_program(NOVACORE_CLANG_FORMAT_EXE NAMES clang-format)
 if(NOVACORE_CLANG_FORMAT_EXE)
@@ -471,5 +539,5 @@ if(NOVACORE_ENABLE_PACKAGING AND NOT ANDROID AND NOT NOVACORE_IS_MOBILE)
     include(CPack)
 endif()
 
-message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD}, ttf=${NOVACORE_ENABLE_TTF})")
+message(STATUS "NovaCore target: ${CMAKE_SYSTEM_NAME} (mobile=${NOVACORE_IS_MOBILE}, android=${ANDROID}, discord=${NOVACORE_ENABLE_DISCORD}, ttf=${NOVACORE_ENABLE_TTF}, gamepad=${NOVACORE_ENABLE_GAMEPAD}, ncscript=${NOVACORE_ENABLE_NCSCRIPT})")
 message(STATUS "NovaCore version: ${PROJECT_VERSION} (${NOVACORE_GIT_BRANCH}@${NOVACORE_GIT_HASH})")
