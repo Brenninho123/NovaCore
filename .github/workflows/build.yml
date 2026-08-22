@@ -13,6 +13,7 @@ concurrency:
 
 env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  SDL2_VERSION: "2.32.10"
 
 jobs:
   build-windows:
@@ -155,32 +156,56 @@ jobs:
       - name: Run native smoke test
         run: |
           test -f build/libmain.so
+          file build/libmain.so
+
+      - name: Cache SDL2 Java sources
+        id: cache-sdl2-java
+        uses: actions/cache@v4
+        with:
+          path: sdl2-java-cache
+          key: sdl2-java-${{ env.SDL2_VERSION }}
 
       - name: Fetch SDL2 Java sources
+        if: steps.cache-sdl2-java.outputs.cache-hit != 'true'
         run: |
-          curl -L https://github.com/libsdl-org/SDL/archive/refs/tags/release-2.32.10.tar.gz -o sdl2-src.tar.gz
-          mkdir sdl2-src
-          tar -xzf sdl2-src.tar.gz -C sdl2-src --strip-components=1
+          mkdir -p sdl2-java-cache
+          curl -L "https://github.com/libsdl-org/SDL/archive/refs/tags/release-${SDL2_VERSION}.tar.gz" -o sdl2-src.tar.gz
+          tar -xzf sdl2-src.tar.gz "SDL-release-${SDL2_VERSION}/android-project/app/src/main/java"
+          cp -r "SDL-release-${SDL2_VERSION}/android-project/app/src/main/java/org" sdl2-java-cache/
+          rm -rf "SDL-release-${SDL2_VERSION}" sdl2-src.tar.gz
+
+      - name: Place SDL2 Java sources into Android project
+        run: |
           mkdir -p android-project/app/src/main/java
-          cp -r sdl2-src/android-project/app/src/main/java/org android-project/app/src/main/java/
+          cp -r sdl2-java-cache/org android-project/app/src/main/java/
 
       - name: Place native library into Android project
         run: |
           mkdir -p android-project/app/src/main/jniLibs/arm64-v8a
           cp build/libmain.so android-project/app/src/main/jniLibs/arm64-v8a/libmain.so
 
+      - name: Verify Android project layout
+        run: |
+          test -f android-project/app/build.gradle
+          test -f android-project/app/src/main/AndroidManifest.xml
+          test -f android-project/app/src/main/java/com/brenninho/novacore/MainActivity.java
+          test -d android-project/app/src/main/java/org/libsdl/app
+          test -f android-project/app/src/main/jniLibs/arm64-v8a/libmain.so
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+          cache-read-only: false
 
       - name: Build APK
         run: |
-          gradle -p android-project assembleDebug --no-daemon
+          gradle -p android-project assembleDebug --no-daemon --stacktrace
 
       - name: Run APK smoke test
         run: |
           test -f android-project/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l android-project/app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libmain.so"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -197,4 +222,5 @@ jobs:
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
+            android-project/app/build/outputs/logs
           if-no-files-found: ignore
